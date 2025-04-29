@@ -1,0 +1,191 @@
+---
+description: Specialized guidelines for implementing search intent classification algorithms for the SERP Keyword Research Agent
+globs: 
+alwaysApply: false
+---
+---
+description: Specialized guidelines for implementing search intent classification algorithms for the SERP Keyword Research Agent
+globs: **/intent_*.py, **/classify_*.py, **/analyzer_*.py
+alwaysApply: false
+---
+# Search Intent Classification Patterns
+
+## Context
+- Apply when implementing intent classification for SERP analysis
+- These patterns are specific to e-commerce intent detection for POD graphic tees
+- Critical for accurate distinction between transactional and exploratory intent
+- Necessary for generating appropriate SEO recommendations
+
+## Critical Rules
+- Implement four distinct intent classes: Transactional, Informational, Navigational, and Exploratory
+- Use strategy pattern for different intent classification algorithms
+- Always calculate confidence scores (0.0-1.0) for each intent classification
+- Weight SERP features heavily in intent classification (shopping ads, image packs, etc.)
+- Prioritize the top 3 SERP results when analyzing intent signals
+- Include domain type analysis (e-commerce vs. content sites) in classification
+- Look for POD-specific indicators in titles and descriptions
+- Detect product-specific modifiers ("buy", "shop", "order") for transactional intent
+- Recognize information-seeking patterns ("how to", "best", "guide") for informational intent
+- Identify idea-gathering signals ("inspiration", "ideas", "designs") for exploratory intent
+- Use scikit-learn or similar library for consistent text classification
+
+## Examples
+
+<example>
+```python
+from enum import Enum, auto
+from abc import ABC, abstractmethod
+from typing import Dict, List, Any, Tuple
+from pydantic import BaseModel
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+import numpy as np
+
+class IntentType(str, Enum):
+    TRANSACTIONAL = "transactional"
+    INFORMATIONAL = "informational" 
+    NAVIGATIONAL = "navigational"
+    EXPLORATORY = "exploratory"
+
+class IntentClassificationResult(BaseModel):
+    primary_intent: IntentType
+    confidence: float
+    all_scores: Dict[IntentType, float]
+    supporting_features: List[str]
+
+class IntentClassificationStrategy(ABC):
+    @abstractmethod
+    def classify(self, serp_data: Dict[str, Any]) -> IntentClassificationResult:
+        pass
+    
+    def extract_text_features(self, serp_data: Dict[str, Any]) -> str:
+        """Extract text features from SERP results for classification."""
+        results = serp_data.get("organic_results", [])
+        # Prioritize top 3 results
+        top_results = results[:3] if len(results) > 3 else results
+        
+        # Extract text from titles and snippets with higher weight for top results
+        text_features = []
+        for i, result in enumerate(top_results):
+            # Add title and snippet multiple times based on position
+            weight = 3 - i if i < 3 else 1
+            title = result.get("title", "")
+            snippet = result.get("snippet", "")
+            for _ in range(weight):
+                text_features.append(title)
+                text_features.append(snippet)
+                
+        return " ".join(text_features)
+
+class TransactionalIntentStrategy(IntentClassificationStrategy):
+    def __init__(self):
+        self.transaction_indicators = [
+            r'\b(buy|shop|order|purchase|price|shipping|cart)\b',
+            r'\b(amazon|etsy|ebay|walmart|shopify)\b',
+            r'\$([\d]+(?:\.[\d]{2})?)',  # Price patterns
+            r'\b(free shipping|discount|sale|offer)\b',
+            r'\b(tee|shirt|tshirt|t-shirt|apparel|clothing)\b'
+        ]
+        
+    def classify(self, serp_data: Dict[str, Any]) -> IntentClassificationResult:
+        text_features = self.extract_text_features(serp_data)
+        
+        # Check for transactional indicators
+        transaction_score = 0.0
+        supporting_features = []
+        
+        # Check for shopping ads (strong indicator)
+        if "shopping_results" in serp_data and serp_data["shopping_results"]:
+            transaction_score += 0.4
+            supporting_features.append("shopping_ads_present")
+        
+        # Check for e-commerce domains in top results
+        ecommerce_domains = 0
+        for result in serp_data.get("organic_results", [])[:3]:
+            domain = result.get("domain", "")
+            if any(shop in domain for shop in ["amazon", "etsy", "ebay", "walmart"]):
+                ecommerce_domains += 1
+                supporting_features.append(f"ecommerce_domain_{domain}")
+        
+        transaction_score += (ecommerce_domains / 3) * 0.3
+        
+        # Check for transaction keywords
+        for pattern in self.transaction_indicators:
+            matches = re.findall(pattern, text_features, re.IGNORECASE)
+            if matches:
+                transaction_score += 0.05 * min(len(matches), 5)  # Cap at 0.25
+                supporting_features.append(f"transaction_keyword_{pattern}")
+        
+        # Cap at 0.95 to allow for uncertainty
+        transaction_score = min(transaction_score, 0.95)
+        
+        return IntentClassificationResult(
+            primary_intent=IntentType.TRANSACTIONAL,
+            confidence=transaction_score,
+            all_scores={
+                IntentType.TRANSACTIONAL: transaction_score,
+                IntentType.INFORMATIONAL: 0.1,  # Placeholder
+                IntentType.NAVIGATIONAL: 0.1,   # Placeholder
+                IntentType.EXPLORATORY: 0.1     # Placeholder
+            },
+            supporting_features=supporting_features
+        )
+
+class IntentClassifier:
+    def __init__(self):
+        self.strategies = {
+            IntentType.TRANSACTIONAL: TransactionalIntentStrategy(),
+            IntentType.INFORMATIONAL: InformationalIntentStrategy(),
+            IntentType.NAVIGATIONAL: NavigationalIntentStrategy(),
+            IntentType.EXPLORATORY: ExploratoryIntentStrategy()
+        }
+    
+    async def classify_intent(self, serp_data: Dict[str, Any]) -> IntentClassificationResult:
+        # Run all strategies and get scores
+        results = {}
+        for intent_type, strategy in self.strategies.items():
+            results[intent_type] = strategy.classify(serp_data)
+        
+        # Find highest confidence
+        highest_intent = max(results.items(), key=lambda x: x[1].confidence)
+        
+        # Create consolidated result
+        all_scores = {
+            intent_type: result.confidence 
+            for intent_type, result in results.items()
+        }
+        
+        return IntentClassificationResult(
+            primary_intent=highest_intent[0],
+            confidence=highest_intent[1].confidence,
+            all_scores=all_scores,
+            supporting_features=highest_intent[1].supporting_features
+        )
+```
+</example>
+
+<example type="invalid">
+```python
+# Overly simplistic intent detection without proper patterns
+def detect_intent(serp_results):
+    # No clear strategy, just basic keyword matching
+    # No confidence scores
+    # No consideration of SERP features
+    # No weighting of top results
+    
+    text = " ".join([r.get("title", "") for r in serp_results])
+    
+    if "buy" in text or "shop" in text:
+        return "transactional"
+    elif "how" in text or "what" in text:
+        return "informational"
+    elif "ideas" in text:
+        return "exploratory"
+    else:
+        return "unknown"  # No fallback strategy
+        
+# No structured results
+# No supporting evidence for the classification
+# No scalable approach for adding new intent types
+```
+</example>

@@ -1,0 +1,111 @@
+---
+description: Best practices for implementing the AI SERP Keyword Research Agent with multi-agent architecture and specialized SERP analysis tools
+globs: 
+alwaysApply: false
+---
+---
+description: Best practices for implementing the AI SERP Keyword Research Agent with multi-agent architecture and specialized SERP analysis tools
+globs: 
+alwaysApply: false
+---
+ # OpenAI Agents SERP Keyword Research Implementation
+
+## Context
+- Apply when implementing the AI SERP Keyword Research Agent for POD graphic tees
+- This rule covers specific patterns required for this project's multi-agent system
+- Focuses on SERP analysis, intent detection, and specialized recommendation generation
+
+## Critical Rules
+- Create distinct specialized agents (SEO Expert, Intent Analyzer, Recommendation)
+- Implement function tools with proper retry mechanisms for SERP API calls
+- Use Pydantic for structured inputs/outputs throughout the agent system
+- Follow the pipeline pattern with clear stage separation for analysis flow
+- Always include confidence scores with intent classifications and recommendations
+- For SERP analysis, prioritize top 3 results with higher weighting
+- Use proper OpenAI Agents SDK tracing for all agent interactions
+- Implement both transactional and exploratory intent detection algorithms
+- Cache SERP results with appropriate TTL (24 hours default)
+- Always validate input search terms with input guardrails
+- Format recommendations with clear prioritization (highest priority first)
+
+## Examples
+
+<example>
+```python
+# Properly implemented multi-agent system
+from agents import Agent, function_tool, Runner, RunConfig
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+
+class IntentAnalysis(BaseModel):
+    main_keyword: str
+    secondary_keywords: List[str]
+    intent_type: str
+    confidence: float
+    serp_features: List[str]
+
+@function_tool
+async def analyze_serp_data(serp_results: Dict[str, Any], max_results: int = 10) -> Dict[str, Any]:
+    """Analyzes SERP data to determine search intent and extract keywords.
+    
+    Args:
+        serp_results: The SERP data to analyze
+        max_results: Maximum number of results to consider
+        
+    Returns:
+        Dictionary containing intent analysis results
+    """
+    try:
+        # Implementation with proper retry mechanism
+        return {
+            "main_keyword": "dad graphic tee",
+            "secondary_keywords": ["funny dad shirt", "father's day gift"],
+            "intent_type": "transactional",
+            "confidence": 0.87,
+            "serp_features": ["shopping_ads", "image_pack"]
+        }
+    except Exception as e:
+        raise ValueError(f"SERP analysis failed: {str(e)}")
+
+# Main orchestration with appropriate tracing
+async def analyze_keyword(search_term):
+    with trace("analyze_keyword", {"search_term": search_term}):
+        result = await Runner.run(
+            seo_expert_agent,
+            search_term,
+            config=RunConfig(max_turns=5, timeout_seconds=30)
+        )
+        return result.final_output
+```
+</example>
+
+<example type="invalid">
+```python
+# Incorrectly implemented system
+from agents import Agent
+
+# Missing structured output model
+agent = Agent(
+    name="Generic Agent",
+    instructions="Analyze SERP data and make recommendations."
+)
+
+# Missing error handling, retry mechanism, and proper typing
+def analyze_serp(search_term):
+    # Direct API call without retry
+    results = requests.get(f"https://serpapi.com/search?q={search_term}")
+    data = results.json()
+    
+    # No confidence scoring
+    return {
+        "keywords": extract_keywords(data),
+        "intent": guess_intent(data)
+    }
+
+# No tracing, no structured pipeline
+def process_keyword(search_term):
+    data = analyze_serp(search_term)
+    recommendations = make_recommendations(data)
+    return recommendations
+```
+</example>

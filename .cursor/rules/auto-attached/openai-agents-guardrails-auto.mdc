@@ -1,0 +1,142 @@
+---
+description: 
+globs: "**/guardrails/*.py", "**/validation/*.py", "**/safety/*.py"
+alwaysApply: false
+---
+---
+description: 
+globs: "**/guardrails/*.py", "**/validation/*.py", "**/safety/*.py"
+alwaysApply: false
+---
+
+ # OpenAI Agents SDK Guardrail Implementation
+
+## Context
+- This rule applies to files implementing guardrails for agent input/output validation
+- Ensures consistent patterns for content moderation and safety
+- Focuses on proper validation flow and tripwire handling
+
+## Critical Rules
+- Use `@input_guardrail` decorator for validating user inputs
+- Use `@output_guardrail` decorator for validating agent outputs
+- Return clear `GuardrailFunctionOutput` with proper tripwire_triggered status
+- Handle exceptions within guardrail functions
+- Use descriptive reasoning in guardrail output information
+- Create validation agents with clear instructions
+- Use Pydantic models for structured validation data
+- Implement appropriate fallbacks for triggered guardrails
+- Consider using multiple guardrails for different validation requirements
+- Handle the `InputGuardrailTripwireTriggered` and `OutputGuardrailTripwireTriggered` exceptions
+
+## Examples
+
+<example>
+```python
+from pydantic import BaseModel
+from agents import (
+    Agent, GuardrailFunctionOutput, RunContextWrapper,
+    input_guardrail, output_guardrail
+)
+
+# Define validation models
+class InputValidation(BaseModel):
+    is_safe: bool
+    reasoning: str
+    category: str = "general"
+
+class OutputQuality(BaseModel):
+    meets_standards: bool
+    reasoning: str
+    suggestions: list[str] = []
+
+# Create validation agents
+content_validator = Agent(
+    name="Content Safety Validator",
+    instructions="""Determine if the user input is safe and appropriate.
+    Check for harmful, offensive, or inappropriate content.
+    Classify any issues found and provide clear reasoning.""",
+    output_type=InputValidation
+)
+
+quality_checker = Agent(
+    name="Response Quality Checker",
+    instructions="""Evaluate the quality of responses.
+    Check for accuracy, helpfulness, and completeness.
+    Provide suggestions for improvement when needed.""",
+    output_type=OutputQuality
+)
+
+# Define input guardrail
+@input_guardrail
+async def safety_guardrail(
+    ctx: RunContextWrapper[dict], agent: Agent, input_text: str
+) -> GuardrailFunctionOutput:
+    try:
+        result = await Runner.run(content_validator, input_text, context=ctx.context)
+        validation = result.final_output_as(InputValidation)
+        
+        return GuardrailFunctionOutput(
+            output_info=validation,
+            tripwire_triggered=not validation.is_safe
+        )
+    except Exception as e:
+        # Default to safe in case of processing error
+        return GuardrailFunctionOutput(
+            output_info={"error": str(e)},
+            tripwire_triggered=False
+        )
+
+# Define output guardrail
+@output_guardrail
+async def quality_guardrail(
+    ctx: RunContextWrapper[dict], agent: Agent, output: str
+) -> GuardrailFunctionOutput:
+    try:
+        result = await Runner.run(quality_checker, output, context=ctx.context)
+        quality = result.final_output_as(OutputQuality)
+        
+        return GuardrailFunctionOutput(
+            output_info=quality,
+            tripwire_triggered=not quality.meets_standards
+        )
+    except Exception as e:
+        # Default to accepting output in case of processing error
+        return GuardrailFunctionOutput(
+            output_info={"error": str(e)},
+            tripwire_triggered=False
+        )
+
+# Create agent with guardrails
+main_agent = Agent(
+    name="Safe Assistant",
+    instructions="Provide helpful responses to user queries.",
+    input_guardrails=[safety_guardrail],
+    output_guardrails=[quality_guardrail]
+)
+```
+</example>
+
+<example type="invalid">
+```python
+# Missing proper validation and error handling
+@input_guardrail
+def basic_check(ctx, agent, input_text):
+    if "bad_word" in input_text:
+        return GuardrailFunctionOutput(tripwire_triggered=True)
+    return GuardrailFunctionOutput(tripwire_triggered=False)
+
+# No structured output and lacks clear reasoning
+@output_guardrail
+def simple_check(ctx, agent, output):
+    is_good = len(output) > 10
+    return GuardrailFunctionOutput(
+        tripwire_triggered=not is_good
+    )
+
+# Missing guardrails on agent
+agent = Agent(
+    name="Unsafe Assistant",
+    instructions="Respond to queries."
+)
+```
+</example>

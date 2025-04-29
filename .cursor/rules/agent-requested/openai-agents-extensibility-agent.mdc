@@ -1,0 +1,276 @@
+---
+description: Best practices for creating extensible and customizable agent systems with plugin architecture and configuration
+globs: 
+alwaysApply: false
+---
+---
+description: "Best practices for creating extensible and customizable agent systems with plugin architecture and configuration"
+globs: 
+alwaysApply: false
+---
+ # OpenAI Agents SDK Extensibility and Customization
+
+## Context
+- This rule applies when designing extensible agent systems
+- Ensures agent components can be dynamically configured, extended, and customized
+- Critical for production systems that need to adapt to changing requirements
+
+## Critical Rules
+- Use factory patterns for creating configurable agents and tools
+- Implement plugin systems for dynamically loading tools and knowledge sources
+- Separate configuration from implementation using config files (YAML/JSON)
+- Create extension points with well-defined interfaces
+- Use dependency injection for flexible component composition
+- Implement middleware for cross-cutting concerns (logging, monitoring)
+- Create hooks for custom pre/post-processing of inputs and outputs
+- Document all extension points and customization options
+- Use composition over inheritance for extensibility
+- Consider versioning for configuration and extension points
+
+## Examples
+
+<example>
+```python
+import yaml
+import importlib
+from typing import Dict, Any, List, Type, Optional, Callable
+from pydantic import BaseModel
+from agents import Agent, function_tool, Runner, KnowledgeSource
+
+# Configuration model
+class AgentConfig(BaseModel):
+    name: str
+    instructions: str
+    model: Optional[str] = None
+    tools: List[str] = []
+    knowledge_sources: List[Dict[str, Any]] = []
+    output_type: Optional[str] = None
+    hooks: Dict[str, str] = {}
+
+class ToolConfig(BaseModel):
+    name: str
+    module: str
+    function: str
+    parameters: Dict[str, Any] = {}
+
+class KnowledgeConfig(BaseModel):
+    type: str
+    parameters: Dict[str, Any] = {}
+
+# Factory for creating agents from configuration
+class AgentFactory:
+    def __init__(self, config_path: str):
+        # Load configuration
+        with open(config_path, 'r') as f:
+            self.config = yaml.safe_load(f)
+        
+        # Initialize registries
+        self.tools_registry = {}
+        self.knowledge_registry = {}
+        self.hook_registry = {}
+        
+        # Load plugins
+        self._load_plugins()
+    
+    def _load_plugins(self):
+        """Load all plugins from the plugins directory."""
+        for plugin_config in self.config.get('plugins', []):
+            try:
+                module_name = plugin_config['module']
+                module = importlib.import_module(module_name)
+                
+                # Register plugin components
+                if hasattr(module, 'register_tools'):
+                    module.register_tools(self.tools_registry)
+                
+                if hasattr(module, 'register_knowledge'):
+                    module.register_knowledge(self.knowledge_registry)
+                    
+                if hasattr(module, 'register_hooks'):
+                    module.register_hooks(self.hook_registry)
+                    
+                print(f"Loaded plugin: {module_name}")
+            except Exception as e:
+                print(f"Failed to load plugin {module_name}: {str(e)}")
+    
+    def _load_tools(self, tool_names: List[str]) -> List[Callable]:
+        """Load tools by name from registry or configuration."""
+        tools = []
+        for tool_name in tool_names:
+            if tool_name in self.tools_registry:
+                tools.append(self.tools_registry[tool_name])
+            else:
+                # Find tool in config
+                tool_config = next((t for t in self.config['tools'] 
+                                  if t['name'] == tool_name), None)
+                if tool_config:
+                    # Dynamically import and load the tool
+                    module = importlib.import_module(tool_config['module'])
+                    tool_func = getattr(module, tool_config['function'])
+                    tools.append(tool_func)
+        return tools
+    
+    def _load_knowledge_sources(self, knowledge_configs: List[Dict[str, Any]]) -> List[KnowledgeSource]:
+        """Load knowledge sources from configuration."""
+        sources = []
+        for k_config in knowledge_configs:
+            k_type = k_config['type']
+            if k_type in self.knowledge_registry:
+                # Create knowledge source from registered factory
+                source_factory = self.knowledge_registry[k_type]
+                source = source_factory(**k_config.get('parameters', {}))
+                sources.append(source)
+        return sources
+    
+    def _load_output_type(self, output_type_name: Optional[str]) -> Optional[Type[BaseModel]]:
+        """Load output type model by name."""
+        if not output_type_name:
+            return None
+            
+        # Find in config
+        output_config = next((m for m in self.config.get('models', []) 
+                            if m['name'] == output_type_name), None)
+        if output_config:
+            module = importlib.import_module(output_config['module'])
+            return getattr(module, output_config['class'])
+        return None
+    
+    def _load_hooks(self, hook_configs: Dict[str, str]) -> Dict[str, Callable]:
+        """Load hooks by name from registry."""
+        hooks = {}
+        for hook_point, hook_name in hook_configs.items():
+            if hook_name in self.hook_registry:
+                hooks[hook_point] = self.hook_registry[hook_name]
+        return hooks
+    
+    def create_agent(self, agent_name: str) -> Agent:
+        """Create an agent from configuration."""
+        # Find agent config
+        agent_config = next((a for a in self.config['agents'] 
+                           if a['name'] == agent_name), None)
+        if not agent_config:
+            raise ValueError(f"Agent {agent_name} not found in configuration")
+        
+        # Load components
+        tools = self._load_tools(agent_config.get('tools', []))
+        knowledge = self._load_knowledge_sources(agent_config.get('knowledge_sources', []))
+        output_type = self._load_output_type(agent_config.get('output_type'))
+        hooks = self._load_hooks(agent_config.get('hooks', {}))
+        
+        # Create agent
+        agent = Agent(
+            name=agent_config['name'],
+            instructions=agent_config['instructions'],
+            model=agent_config.get('model'),
+            tools=tools,
+            knowledge=knowledge,
+            output_type=output_type
+        )
+        
+        # Apply hooks
+        if 'pre_process' in hooks:
+            agent.pre_process_hook = hooks['pre_process']
+        if 'post_process' in hooks:
+            agent.post_process_hook = hooks['post_process']
+            
+        return agent
+
+# Example plugin module (plugins/custom_tools.py)
+"""
+from agents import function_tool
+
+@function_tool
+def custom_search(query: str) -> dict:
+    # Implementation
+    return {"results": ["result1", "result2"]}
+
+def register_tools(registry):
+    registry['custom_search'] = custom_search
+"""
+
+# Example configuration (agent_config.yaml)
+"""
+plugins:
+  - module: plugins.custom_tools
+  - module: plugins.custom_knowledge
+
+tools:
+  - name: file_search
+    module: tools.search
+    function: file_search
+  
+models:
+  - name: SearchResult
+    module: models.search
+    class: SearchResult
+
+agents:
+  - name: SearchAgent
+    instructions: You are a search agent that helps find information.
+    model: o3-mini
+    tools:
+      - custom_search
+      - file_search
+    knowledge_sources:
+      - type: file_knowledge
+        parameters:
+          path: docs/
+    output_type: SearchResult
+    hooks:
+      pre_process: log_input
+      post_process: format_output
+"""
+
+# Usage
+factory = AgentFactory("agent_config.yaml")
+search_agent = factory.create_agent("SearchAgent")
+
+# Run with middleware for cross-cutting concerns
+async def run_with_middleware(agent, query):
+    # Pre-processing middleware
+    query = sanitize_input(query)
+    
+    # Run agent
+    result = await Runner.run(agent, query)
+    
+    # Post-processing middleware
+    processed_result = format_output(result.final_output)
+    
+    return processed_result
+```
+</example>
+
+<example type="invalid">
+```python
+# Hardcoded configuration
+agent = Agent(
+    name="Hardcoded Agent",
+    instructions="This agent has hardcoded configuration and tools.",
+    tools=[tool1, tool2]
+)
+
+# No extension points
+def process_input(input_text):
+    # Direct processing without hooks or middleware
+    result = agent.run_sync(input_text)
+    return result
+
+# Tightly coupled components
+class MonolithicSystem:
+    def __init__(self):
+        self.agent = Agent(
+            name="Monolithic Agent",
+            instructions="This agent is part of a tightly coupled system."
+        )
+        # Direct references to specific implementations
+        self.database = PostgreSQLDatabase()
+        self.logger = ConsoleLogger()
+    
+    def run(self, input_text):
+        # No abstraction or separation of concerns
+        self.logger.log(input_text)
+        result = self.agent.run_sync(input_text)
+        self.database.save_result(result)
+        return result
+```
+</example>

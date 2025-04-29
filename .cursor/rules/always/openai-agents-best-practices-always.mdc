@@ -1,0 +1,128 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ # OpenAI Agents SDK Best Practices
+
+## Context
+- These are critical best practices for all OpenAI Agents SDK implementations
+- Apply to all code working with the SDK regardless of specific functionality
+- Essential for maintaining code quality, security, and performance
+
+## Critical Rules
+- Create specialized agents with clear, single responsibilities
+- Write detailed, step-by-step instructions for agents
+- Include proper error handling in all tool implementations
+- Use type hints consistently for all function tools
+- Document all parameters and return values in docstrings
+- Use structured outputs with Pydantic models for validation
+- Follow async patterns consistently with proper await usage
+- Implement guardrails for user inputs when processing external data
+- Use trace context managers for all multi-step workflows
+- Set appropriate timeout and retry mechanisms for agent runs
+
+## Examples
+
+<example>
+```python
+from pydantic import BaseModel
+from agents import Agent, function_tool, Runner, RunConfig
+import asyncio
+from typing import List, Dict, Any, Optional
+
+# Structured output model
+class AnalysisResult(BaseModel):
+    summary: str
+    key_points: List[str]
+    confidence: float
+    sources: Optional[List[str]] = None
+
+# Well-designed function tool
+@function_tool
+async def analyze_document(document_text: str, max_points: int = 5) -> Dict[str, Any]:
+    """Analyze the content of a document.
+    
+    Args:
+        document_text: The text content to analyze.
+        max_points: Maximum number of key points to extract.
+        
+    Returns:
+        Dictionary containing analysis results.
+    """
+    try:
+        # Implementation
+        return {
+            "summary": "Sample summary",
+            "key_points": ["Point 1", "Point 2"],
+            "confidence": 0.95
+        }
+    except Exception as e:
+        # Proper error handling
+        raise ValueError(f"Document analysis failed: {str(e)}")
+
+# Well-designed agent
+analysis_agent = Agent(
+    name="Document Analyzer",
+    instructions="""You analyze documents and extract key information.
+    
+    Follow these steps:
+    1. Read the document carefully
+    2. Identify the main topic and themes
+    3. Extract the most important points (limited by max_points)
+    4. Create a concise summary
+    5. Assess your confidence in the analysis""",
+    tools=[analyze_document],
+    output_type=AnalysisResult
+)
+
+# Proper run configuration with timeout and error handling
+async def process_document(document_text: str) -> Dict[str, Any]:
+    try:
+        result = await Runner.run(
+            analysis_agent,
+            document_text,
+            config=RunConfig(
+                max_turns=5,
+                timeout_seconds=30
+            )
+        )
+        return {
+            "status": "success",
+            "data": result.final_output_as(AnalysisResult)
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+```
+</example>
+
+<example type="invalid">
+```python
+# Missing type hints and proper error handling
+def process_data(data):
+    # Direct processing without validation
+    result = do_something(data)
+    return result
+
+# Poor agent design
+agent = Agent(
+    name="Helper",
+    # Vague instructions without clear steps
+    instructions="Help process data and provide results."
+)
+
+# Missing proper async and error handling
+async def run_agent(query):
+    # No timeout or error handling
+    result = await Runner.run(agent, query)
+    return result.final_output
+```
+</example>

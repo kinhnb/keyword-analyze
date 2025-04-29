@@ -1,0 +1,243 @@
+---
+description: 
+globs: "**/security/*.py", "**/compliance/*.py", "**/auth/*.py", "**/api/*.py"
+alwaysApply: false
+---
+---
+description: 
+globs: "**/security/*.py", "**/compliance/*.py", "**/auth/*.py", "**/api/*.py"
+alwaysApply: false
+---
+
+ # OpenAI Agents SDK Security and Compliance
+
+## Context
+- This rule applies to code implementing security and compliance features for OpenAI Agents
+- Ensures robust security practices and regulatory compliance
+- Critical for production systems that handle sensitive data or make important decisions
+
+## Critical Rules
+- Implement proper authentication and authorization for all agent endpoints
+- Never log or store sensitive user data directly in prompt contexts
+- Use environment variables for all API keys and credentials
+- Implement data minimization principles to limit exposure of PII
+- Create clear audit trails for all agent decisions and actions
+- Implement role-based access control for different agent capabilities
+- Add appropriate disclaimer notices for AI-generated content
+- Use content filtering for both inputs and outputs
+- Implement appropriate timeout and retry mechanisms
+- Create "circuit breakers" to prevent runaway costs or unwanted behavior
+
+## Examples
+
+<example>
+```python
+import os
+import logging
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+from pydantic import BaseModel
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, List
+from agents import Agent, Runner, GuardrailFunctionOutput, input_guardrail
+
+# Security configuration
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")  # Load from environment
+if not SECRET_KEY:
+    raise EnvironmentError("Missing JWT_SECRET_KEY environment variable")
+
+# Authentication models
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+    permissions: List[str] = []
+
+class User(BaseModel):
+    username: str
+    disabled: Optional[bool] = None
+    permissions: List[str] = []
+
+# OAuth2 scheme for token validation
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# JWT token handling
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        permissions = payload.get("permissions", [])
+        token_data = TokenData(username=username, permissions=permissions)
+    except JWTError:
+        raise credentials_exception
+    
+    # In production, retrieve user from database
+    user = User(username=token_data.username, permissions=token_data.permissions)
+    if user is None:
+        raise credentials_exception
+    return user
+
+# Permission checking
+def check_permission(required_permission: str):
+    async def permission_dependency(current_user: User = Depends(get_current_user)):
+        if required_permission not in current_user.permissions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to perform this action"
+            )
+        return current_user
+    return permission_dependency
+
+# Content moderation guardrail
+@input_guardrail
+async def content_moderation_guardrail(ctx, agent, input_text: str) -> GuardrailFunctionOutput:
+    """Check user input for inappropriate content."""
+    try:
+        # Example moderation check
+        has_inappropriate_content = check_for_inappropriate_content(input_text)
+        
+        if has_inappropriate_content:
+            # Log the rejection but avoid logging the actual content
+            logging.warning(
+                f"Rejected input from user {ctx.context.get('user_id', 'unknown')} due to policy violation"
+            )
+            
+            return GuardrailFunctionOutput(
+                tripwire_triggered=True,
+                output_info={
+                    "reason": "Content policy violation",
+                    "recommendation": "Please ensure your request complies with our usage policies."
+                }
+            )
+        
+        return GuardrailFunctionOutput(tripwire_triggered=False)
+    except Exception as e:
+        logging.error(f"Error in content moderation: {str(e)}")
+        # Fail closed - reject if we can't validate
+        return GuardrailFunctionOutput(
+            tripwire_triggered=True,
+            output_info={"reason": "Unable to verify content compliance"}
+        )
+
+# Secure agent with compliance features
+def create_secure_agent():
+    agent = Agent(
+        name="Compliant Assistant",
+        instructions="""You are a helpful assistant that follows strict compliance guidelines.
+        
+        IMPORTANT COMPLIANCE REQUIREMENTS:
+        1. Never share personally identifiable information (PII)
+        2. Provide factual information with appropriate disclaimers
+        3. Decline to respond to inappropriate requests
+        4. Always cite sources when providing factual information
+        5. Disclose when content is AI-generated
+        
+        This content is AI-generated and may contain errors or omissions.""",
+        input_guardrails=[content_moderation_guardrail]
+    )
+    
+    return agent
+
+# Secure API endpoint
+@app.post("/api/ask", response_model=ResponseModel)
+async def secure_ask_endpoint(
+    request: RequestModel,
+    user: User = Depends(check_permission("agent:invoke"))
+):
+    # Create secure audit context
+    context = {
+        "user_id": user.username,
+        "request_id": generate_request_id(),
+        "timestamp": datetime.utcnow().isoformat(),
+        "client_ip": anonymize_ip(request.client.host)  # Privacy by design
+    }
+    
+    try:
+        # Run agent with timeout and cost limits
+        result = await Runner.run(
+            create_secure_agent(),
+            request.query,
+            context=context,
+            config=RunConfig(
+                timeout_seconds=10,
+                max_turns=5  # Limit to prevent runaway costs
+            )
+        )
+        
+        # Audit logging (without sensitive data)
+        logging.info(
+            f"Request processed: user={user.username}, request_id={context['request_id']}, " 
+            f"status=success, tokens={result.token_usage}"
+        )
+        
+        # Add compliance disclaimer
+        response = result.final_output
+        if not response.endswith(COMPLIANCE_NOTICE):
+            response = f"{response}\n\n{COMPLIANCE_NOTICE}"
+        
+        return ResponseModel(
+            response=response,
+            request_id=context["request_id"],
+            processed_at=context["timestamp"]
+        )
+    except Exception as e:
+        # Log error (without sensitive data)
+        logging.error(
+            f"Error processing request: user={user.username}, " 
+            f"request_id={context['request_id']}, error={str(e)}"
+        )
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred processing your request"
+        )
+```
+</example>
+
+<example type="invalid">
+```python
+# Insecure API key handling
+OPENAI_API_KEY = "sk-123456789abcdef"  # Hardcoded secret
+
+# No authentication
+@app.post("/ask")
+async def unsecured_endpoint(query: str):
+    # No authentication or authorization
+    result = await agent.run(query)
+    return {"response": result}
+
+# Logging sensitive data
+def process_user_input(user_input, user_data):
+    # Directly logging sensitive data
+    logging.info(f"Processing request for {user_data['name']}, input: {user_input}")
+    # No content moderation
+    return agent.run_sync(user_input)
+
+# No disclaimers or compliance notices
+agent = Agent(
+    name="Unrestricted Agent",
+    instructions="Help the user with whatever they ask for."
+    # No guardrails
+    # No compliance requirements
+)
+```
+</example>

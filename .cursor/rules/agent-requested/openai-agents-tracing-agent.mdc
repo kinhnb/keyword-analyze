@@ -1,0 +1,130 @@
+---
+description: Implementation patterns for comprehensive agent tracing, monitoring, and debugging capabilities
+globs: 
+alwaysApply: false
+---
+---
+description: Implementation patterns for comprehensive agent tracing, monitoring, and debugging capabilities
+globs: 
+alwaysApply: false
+---
+
+ # OpenAI Agents SDK Tracing and Observability
+
+## Context
+- This rule applies when implementing tracing functionality in OpenAI Agents SDK projects
+- Ensures consistent patterns for observability, debugging, and monitoring
+- Critical for troubleshooting complex agent workflows and multi-agent systems
+
+## Critical Rules
+- Use the `trace()` context manager to create named traces for workflows
+- Implement custom `TraceProcessor` classes for specialized logging or monitoring
+- Register trace processors with `add_trace_processor()`
+- Set `trace_include_sensitive_data=False` when handling private information
+- Use meaningful trace names that reflect the workflow purpose
+- Ensure traces encompass complete logical workflows for proper debugging
+- Create hierarchical spans for complex multi-agent workflows
+- Add useful metadata to traces for filtering and analysis
+- Implement appropriate error handling within traced code
+- Properly dispose of trace resources in finally blocks when needed
+
+## Examples
+
+<example>
+```python
+from agents import (
+    Agent, Runner, trace, add_trace_processor,
+    TraceProcessor, Trace, Span
+)
+import asyncio
+import logging
+
+# Create logger
+logger = logging.getLogger("agent_tracing")
+
+# Define custom trace processor for logging
+class LoggingTraceProcessor(TraceProcessor):
+    def process_trace(self, trace: Trace):
+        logger.info(f"Trace completed: {trace.workflow_name} ({trace.trace_id})")
+        logger.info(f"Duration: {trace.duration_ms}ms")
+        
+        # Log span information
+        for span in trace.spans:
+            logger.info(f"  - Span: {span.name} ({span.duration_ms}ms)")
+            
+            # Log events within span
+            for event in span.events:
+                logger.info(f"    - Event: {event.name} at {event.time_offset_ms}ms")
+    
+    def process_span(self, span: Span):
+        logger.debug(f"Span created: {span.name}")
+
+# Register trace processor
+add_trace_processor(LoggingTraceProcessor())
+
+# Create agents
+main_agent = Agent(
+    name="Workflow Orchestrator",
+    instructions="Coordinate the overall workflow process."
+)
+
+processing_agent = Agent(
+    name="Data Processor",
+    instructions="Process and transform input data."
+)
+
+# Implement traced workflow
+async def complex_workflow(input_data):
+    # Create named trace for the entire workflow
+    with trace("Customer Data Processing"):
+        try:
+            # First agent call
+            result1 = await Runner.run(
+                main_agent, 
+                f"Analyze this data: {input_data}",
+                metadata={"data_type": "customer", "priority": "high"}
+            )
+            
+            # Second agent call in same trace
+            result2 = await Runner.run(
+                processing_agent,
+                f"Process the analysis: {result1.final_output[:100]}...",
+                metadata={"stage": "processing"}
+            )
+            
+            return {
+                "status": "success",
+                "result": result2.final_output
+            }
+        except Exception as e:
+            logger.error(f"Workflow failed: {str(e)}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+```
+</example>
+
+<example type="invalid">
+```python
+# No trace context manager
+async def process_data(data):
+    # Missing trace for the workflow
+    result1 = await Runner.run(agent1, f"Process: {data}")
+    result2 = await Runner.run(agent2, f"Continue: {result1.final_output}")
+    return result2.final_output
+
+# Trace without error handling
+with trace("Workflow"):
+    # Missing try-except block
+    result = Runner.run_sync(agent, "Process data")
+    processed = do_something(result.final_output)
+    
+# Trace processor without proper implementation
+class BadTraceProcessor(TraceProcessor):
+    # Missing required methods
+    pass
+
+add_trace_processor(BadTraceProcessor())
+```
+</example>

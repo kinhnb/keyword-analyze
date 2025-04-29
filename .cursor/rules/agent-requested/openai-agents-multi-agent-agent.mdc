@@ -1,0 +1,190 @@
+---
+description: Guidelines for implementing multi-agent systems with proper coordination, handoffs, and communication patterns
+globs: 
+alwaysApply: false
+---
+---
+description: Guidelines for implementing multi-agent systems with proper coordination, handoffs, and communication patterns
+globs: 
+alwaysApply: false
+---
+
+ # OpenAI Agents SDK Multi-Agent System Design
+
+## Context
+- This rule applies when designing systems with multiple coordinating agents
+- Ensures clear separation of concerns and effective coordination patterns
+- Critical for complex workflows requiring specialized agent capabilities
+
+## Critical Rules
+- Design agents with clear, non-overlapping areas of specialization
+- Implement explicit handoff protocols between agents
+- Use a central orchestrator agent to coordinate complex workflows
+- Pass complete context between agents during handoffs
+- Document the decision tree for agent selection and handoffs
+- Handle handoff failures gracefully with fallback mechanisms
+- Use consistent naming patterns for related agent groups
+- Maintain state across multi-agent interactions when needed
+- Implement proper logging across the entire agent workflow
+- Consider data privacy when sharing information between agents
+
+## Examples
+
+<example>
+```python
+from pydantic import BaseModel
+from agents import Agent, handoff, Runner, trace, RunContextWrapper
+from typing import Dict, Any, List, Optional
+
+# Define structured data models for agent interfaces
+class CustomerQuery(BaseModel):
+    query_text: str
+    category: str
+    priority: int
+    customer_id: str
+
+class TechnicalSolution(BaseModel):
+    steps: List[str]
+    resources: List[str]
+    complexity: str
+    estimated_time: str
+
+class CustomerResponse(BaseModel):
+    explanation: str
+    solution: str
+    follow_up: Optional[str] = None
+
+# Create specialized agents
+technical_agent = Agent(
+    name="Technical Specialist",
+    handoff_description="Expert in solving complex technical problems",
+    instructions="""You are a technical specialist who solves complex problems.
+    Analyze technical issues thoroughly and provide detailed step-by-step solutions.
+    Consider different approaches and recommend the most efficient one.
+    Include links to relevant documentation when applicable.""",
+    output_type=TechnicalSolution
+)
+
+customer_agent = Agent(
+    name="Customer Communication Specialist",
+    handoff_description="Expert in clear, friendly customer communication",
+    instructions="""You are a customer communication specialist.
+    Transform technical information into clear, friendly explanations.
+    Ensure all communications are empathetic and accessible to non-technical users.
+    Avoid technical jargon unless absolutely necessary and explain it when used.""",
+    output_type=CustomerResponse
+)
+
+# Define handoff callback with context enrichment
+async def on_technical_handoff(ctx: RunContextWrapper[Dict[str, Any]], input_data: CustomerQuery):
+    # Log the handoff
+    print(f"Technical handoff: {input_data.category} (Priority: {input_data.priority})")
+    
+    # Enrich context
+    ctx.context["handoff_time"] = time.time()
+    ctx.context["customer_history"] = await get_customer_history(input_data.customer_id)
+
+# Create orchestrator agent
+orchestrator_agent = Agent(
+    name="Support Orchestrator",
+    instructions="""You are the main orchestrator for customer support.
+    
+    For initial customer queries:
+    1. Analyze the query and categorize it
+    2. Determine if it's a technical issue requiring the Technical Specialist
+    3. For technical issues, hand off to the Technical Specialist
+    4. For non-technical issues, provide a direct response
+    
+    When receiving technical solutions:
+    1. Hand off to the Customer Communication Specialist to create customer-friendly explanations
+    
+    Always maintain context throughout the entire workflow.""",
+    handoffs=[
+        handoff(
+            agent=technical_agent,
+            on_handoff=on_technical_handoff,
+            input_type=CustomerQuery
+        ),
+        handoff(
+            agent=customer_agent,
+            input_type=TechnicalSolution
+        )
+    ]
+)
+
+# Implement the multi-agent workflow
+async def handle_customer_query(query_text: str, customer_id: str) -> Dict[str, Any]:
+    # Create a trace for the entire workflow
+    with trace("Customer Support Workflow"):
+        try:
+            # Initial context
+            context = {
+                "customer_id": customer_id,
+                "workflow_start": time.time(),
+                "query_id": generate_id()
+            }
+            
+            # Start with orchestrator
+            result = await Runner.run(
+                orchestrator_agent,
+                query_text,
+                context=context
+            )
+            
+            # Final response will be from either orchestrator (simple case)
+            # or customer agent (technical case after handoffs)
+            if isinstance(result.final_output_as(CustomerResponse)):
+                return {
+                    "status": "success",
+                    "response": result.final_output_as(CustomerResponse),
+                    "workflow": "complete"
+                }
+            else:
+                # Something went wrong
+                return {
+                    "status": "error",
+                    "message": "Workflow did not complete as expected",
+                    "raw_response": result.final_output
+                }
+                
+        except Exception as e:
+            # Handle errors
+            print(f"Workflow error: {str(e)}")
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+```
+</example>
+
+<example type="invalid">
+```python
+# Overlapping agent responsibilities
+agent1 = Agent(
+    name="General Agent",
+    instructions="Handle all types of queries and technical issues."
+)
+
+agent2 = Agent(
+    name="Also General Agent",
+    instructions="Solve technical problems and communicate with customers."
+)
+
+# Missing coordination pattern
+async def run_agents(query):
+    # No clear workflow or coordination
+    result1 = await Runner.run(agent1, query)
+    result2 = await Runner.run(agent2, query)
+    # No clear way to reconcile or combine results
+    return f"{result1.final_output}\n{result2.final_output}"
+
+# No structured data exchange
+def process_with_agents(query):
+    # Missing structured data models for handoffs
+    # No context preservation
+    result1 = first_agent.run_sync(query)
+    # Direct string passing without structure
+    result2 = second_agent.run_sync(result1)
+    return result2
+```
+</example>

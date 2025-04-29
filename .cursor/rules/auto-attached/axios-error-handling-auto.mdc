@@ -1,0 +1,123 @@
+---
+description: 
+globs: "**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"
+alwaysApply: false
+---
+---
+description: 
+globs: "**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"
+alwaysApply: false
+---
+
+# Use Axios with Error Handling
+
+## Context
+- This rule applies to JavaScript and TypeScript files making API calls
+- Ensures consistent API request handling across the codebase
+- Provides proper error handling for network requests
+
+## Critical Rules
+- Use Axios for all API requests
+- Wrap all Axios calls in try/catch blocks
+- Include meaningful error messages in catch blocks
+- Always handle response status codes appropriately
+- Create reusable Axios instances for common base URLs
+- Set appropriate timeouts for all requests
+- Use async/await syntax for better readability
+
+## Examples
+
+<example>
+```javascript
+import axios from 'axios';
+
+// Good: Using Axios with proper error handling
+async function fetchUserData(userId) {
+  try {
+    const response = await axios.get(`/api/users/${userId}`);
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error(`Error fetching user data: ${error.response.status} - ${error.response.data.message || 'Unknown error'}`);
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error('Error fetching user data: No response received from server');
+      } else {
+        // Something happened in setting up the request
+        console.error(`Error fetching user data: ${error.message}`);
+      }
+    } else {
+      // Not an Axios error
+      console.error(`Unexpected error: ${error.message}`);
+    }
+    throw new Error('Failed to fetch user data. Please try again later.');
+  }
+}
+
+// Good: Creating a reusable Axios instance
+const apiClient = axios.create({
+  baseURL: 'https://api.example.com',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+async function createPost(postData) {
+  try {
+    const response = await apiClient.post('/posts', postData);
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message = error.response?.data?.message || error.message || 'Unknown error';
+      console.error(`Failed to create post: ${message}`);
+    } else {
+      console.error(`Unexpected error: ${error.message}`);
+    }
+    throw new Error('Failed to create post. Please check your data and try again.');
+  }
+}
+```
+</example>
+
+<example type="invalid">
+```javascript
+// Bad: Using fetch without proper error handling
+function fetchUserData(userId) {
+  return fetch(`/api/users/${userId}`)
+    .then(response => response.json())
+    .then(data => data);
+}
+
+// Bad: Using XMLHttpRequest
+function getUser(userId) {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', `/api/users/${userId}`);
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      return JSON.parse(xhr.responseText);
+    }
+  };
+  xhr.send();
+}
+
+// Bad: Using Axios without error handling
+async function updateUser(userId, userData) {
+  const response = await axios.put(`/api/users/${userId}`, userData);
+  return response.data;
+}
+
+// Bad: Inconsistent error handling
+async function deletePost(postId) {
+  try {
+    const response = await axios.delete(`/api/posts/${postId}`);
+    return response.data;
+  } catch (error) {
+    console.log('Error:', error);
+  }
+}
+```
+</example>

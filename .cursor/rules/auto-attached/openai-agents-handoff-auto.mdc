@@ -1,0 +1,101 @@
+---
+description: 
+globs: "**/handoffs/*.py", "**/orchestration/*.py", "**/workflows/*.py"
+alwaysApply: false
+---
+---
+description: 
+globs: "**/handoffs/*.py", "**/orchestration/*.py", "**/workflows/*.py"
+alwaysApply: false
+---
+
+ # OpenAI Agents SDK Handoff Patterns
+
+## Context
+- This rule applies to files implementing agent handoff functionality
+- Ensures consistent patterns for agent delegation and collaboration
+- Focuses on proper handoff description and callback implementation
+
+## Critical Rules
+- Always specify a clear `handoff_description` for specialized agents
+- Create specialized agents with single, focused responsibilities
+- Implement custom handoff callbacks when additional processing is needed
+- Use structured input/output types with Pydantic for handoff data
+- Pass necessary context between agents during handoffs
+- Handle handoff failures gracefully with proper error handling
+- Use meaningful names for specialized agents that reflect their purpose
+- Document the handoff flow in agent instructions
+- Avoid circular handoff dependencies between agents
+- Consider using callbacks for logging or monitoring handoff events
+
+## Examples
+
+<example>
+```python
+from pydantic import BaseModel
+from agents import Agent, handoff, RunContextWrapper
+
+# Define specialized agent for detailed tasks
+specialist_agent = Agent(
+    name="Technical Specialist",
+    handoff_description="Expert in resolving complex technical problems",
+    instructions="""You are a technical specialist who provides detailed solutions.
+    Analyze the problem thoroughly before suggesting solutions.
+    Always include step-by-step instructions in your responses."""
+)
+
+# Define input structure for handoff
+class EscalationRequest(BaseModel):
+    issue_type: str
+    priority: int
+    description: str
+
+# Create handoff callback
+async def on_escalation(ctx: RunContextWrapper[dict], input_data: EscalationRequest):
+    # Log the escalation event
+    print(f"Escalation: {input_data.issue_type} (Priority: {input_data.priority})")
+    
+    # Enrich context with additional information
+    ctx.context["escalation_time"] = time.time()
+    ctx.context["escalation_count"] = ctx.context.get("escalation_count", 0) + 1
+
+# Create main agent with handoff
+main_agent = Agent(
+    name="Support Assistant",
+    instructions="""You are a support assistant helping users with problems.
+    For basic questions, provide answers directly.
+    For complex technical issues, escalate to the Technical Specialist.""",
+    handoffs=[
+        handoff(
+            agent=specialist_agent,
+            on_handoff=on_escalation,
+            input_type=EscalationRequest
+        )
+    ]
+)
+```
+</example>
+
+<example type="invalid">
+```python
+# Missing handoff description
+specialist = Agent(
+    name="Specialist",
+    instructions="Handle complex issues."
+)
+
+# No input structure or callback
+main_agent = Agent(
+    name="Main",
+    instructions="Help users with basic issues.",
+    handoffs=[specialist]
+)
+
+# Unclear instructions about when to hand off
+agent = Agent(
+    name="Support",
+    instructions="Provide support for users.",
+    handoffs=[specialist]
+)
+```
+</example>

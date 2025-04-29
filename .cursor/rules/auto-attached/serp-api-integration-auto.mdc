@@ -1,0 +1,162 @@
+---
+description: 
+globs: **/*.py
+alwaysApply: false
+---
+---
+description: 
+globs: **/*.py
+alwaysApply: false
+---
+ # SERP API Integration Standards
+
+## Context
+- This rule applies when implementing SERP API integrations
+- Ensures consistent, robust external API communication
+- Critical for handling rate limits and ensuring data quality
+- Required for the SERP Keyword Research Agent functionality
+
+## Critical Rules
+- Always use httpx for asynchronous SERP API calls
+- Implement retry mechanisms with exponential backoff for all API calls
+- Cache SERP results with a 24-hour TTL by default
+- Always include proper error handling for API errors and rate limits
+- Sanitize search terms before sending to external APIs
+- Use environment variables for all API credentials
+- Structure SERP API responses into consistent Pydantic models
+- Implement timeout handling for all API calls (default: 30 seconds)
+- Log all API calls with correlation IDs for traceability
+- Validate API responses before processing
+- Test API integration with mocked responses
+
+## Examples
+
+<example>
+```python
+import httpx
+import tenacity
+from pydantic import BaseModel
+from loguru import logger
+import os
+import json
+from typing import Dict, Any, List, Optional
+
+class SerpApiResponse(BaseModel):
+    organic_results: List[Dict[str, Any]]
+    paid_results: Optional[List[Dict[str, Any]]] = None
+    related_searches: Optional[List[str]] = None
+    serp_features: Optional[Dict[str, Any]] = None
+
+class SerpApiClient:
+    def __init__(self, cache_service=None):
+        self.api_key = os.getenv("SERP_API_KEY")
+        self.api_url = os.getenv("SERP_API_URL", "https://serpapi.com/search.json")
+        self.cache_service = cache_service
+        self.timeout = httpx.Timeout(30.0, connect=10.0)
+    
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception_type((httpx.ConnectTimeout, httpx.HTTPStatusError)),
+        wait=tenacity.wait_exponential(multiplier=1, min=2, max=30),
+        stop=tenacity.stop_after_attempt(5),
+        before_sleep=lambda retry_state: logger.warning(f"Retrying SERP API call attempt {retry_state.attempt_number}")
+    )
+    async def search(self, query: str, **params) -> SerpApiResponse:
+        """Search the SERP API with retry mechanism.
+        
+        Args:
+            query: The search term to query
+            **params: Additional parameters for the search
+            
+        Returns:
+            Structured SERP API response
+            
+        Raises:
+            ValueError: If the API call fails after retries
+        """
+        # Sanitize query
+        sanitized_query = self._sanitize_query(query)
+        
+        # Check cache
+        if self.cache_service:
+            cache_key = f"serp::{sanitized_query}"
+            cached_result = await self.cache_service.get(cache_key)
+            if cached_result:
+                return SerpApiResponse.model_validate_json(cached_result)
+        
+        # Prepare request
+        request_params = {
+            "q": sanitized_query,
+            "api_key": self.api_key,
+            **params
+        }
+        
+        # Generate correlation ID
+        correlation_id = f"serp-{uuid.uuid4().hex[:8]}"
+        logger.info(f"SERP API call initiated: {correlation_id}", extra={"correlation_id": correlation_id})
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(self.api_url, params=request_params)
+                response.raise_for_status()
+                
+                # Parse and validate response
+                result = response.json()
+                serp_response = SerpApiResponse.model_validate(result)
+                
+                # Cache result
+                if self.cache_service:
+                    await self.cache_service.set(
+                        cache_key, 
+                        response.text, 
+                        ttl=86400  # 24 hours
+                    )
+                
+                logger.info(f"SERP API call successful: {correlation_id}", extra={"correlation_id": correlation_id})
+                return serp_response
+                
+        except httpx.HTTPStatusError as e:
+            logger.error(f"SERP API HTTP error: {e.response.status_code}", extra={
+                "correlation_id": correlation_id,
+                "status_code": e.response.status_code
+            })
+            if e.response.status_code == 429:
+                logger.warning("SERP API rate limit reached", extra={"correlation_id": correlation_id})
+            raise ValueError(f"SERP API error: {str(e)}")
+            
+        except httpx.RequestError as e:
+            logger.error(f"SERP API request error: {str(e)}", extra={"correlation_id": correlation_id})
+            raise ValueError(f"SERP API request error: {str(e)}")
+    
+    def _sanitize_query(self, query: str) -> str:
+        """Sanitize the search query to prevent injection."""
+        # Remove dangerous characters
+        return query.strip()
+```
+</example>
+
+<example type="invalid">
+```python
+import requests
+
+class BadSerpClient:
+    def __init__(self):
+        self.api_key = "hardcoded_key"  # Never hardcode credentials
+    
+    def search(self, query):
+        # No sanitization of query
+        # No retry mechanism
+        # No proper error handling
+        # No timeout
+        # No caching strategy
+        url = f"https://serpapi.com/search.json?q={query}&api_key={self.api_key}"
+        response = requests.get(url)
+        return response.json()  # No validation or structured model
+        
+    def process_results(self, results):
+        # No error handling if results is malformed
+        return {
+            "keywords": [item["title"] for item in results["organic_results"]],
+            "links": [item["link"] for item in results["organic_results"]]
+        }
+```
+</example>

@@ -1,0 +1,155 @@
+---
+description: 
+globs: "**/*.tsx", "**/*.jsx", "**/*.ts", "**/*.js"
+alwaysApply: false
+---
+---
+description: 
+globs: "**/*.tsx", "**/*.jsx", "**/*.ts", "**/*.js"
+alwaysApply: false
+---
+
+# Validate Next.js Folder Structure
+
+## Context
+- This rule applies to Next.js projects
+- Ensures consistent folder structure following Next.js conventions
+- Facilitates routing and API organization
+
+## Critical Rules
+- Place page components in the `/pages` directory
+- Place API routes in the `/pages/api` directory
+- Name files according to the desired route path
+- Use dynamic route segments with brackets (e.g., `[id].tsx`)
+- Keep shared components in a separate `/components` directory
+- Place layout components in `/components/layouts`
+- Store utility functions in `/utils` or `/lib`
+- Use `/public` for static assets only
+- Place hooks in `/hooks` directory
+- Keep data fetching logic separate from UI components when possible
+
+## Examples
+
+<example>
+// Good: Next.js project structure
+/pages
+/api
+/auth
+[...nextauth].ts
+/users
+/[id].ts
+index.ts
+health.ts
+/blog
+/[slug].tsx
+index.tsx
+/products
+/[id].tsx
+index.tsx
+app.tsx
+document.tsx
+index.tsx
+/components
+/layouts
+MainLayout.tsx
+DashboardLayout.tsx
+/ui
+Button.tsx
+Card.tsx
+/forms
+LoginForm.tsx
+SignupForm.tsx
+/hooks
+useUser.ts
+useCart.ts
+/lib
+api.ts
+auth.ts
+/utils
+formatting.ts
+validation.ts
+/public
+/images
+favicon.ico
+/styles
+globals.css
+// Good: Page component at /pages/users/[id].tsx
+import { useRouter } from 'next/router';
+import { useState, useEffect } from 'react';
+import MainLayout from '../../components/layouts/MainLayout';
+import UserProfile from '../../components/UserProfile';
+import { fetchUser } from '../../lib/api';
+export default function UserPage() {
+const router = useRouter();
+const { id } = router.query;
+const [user, setUser] = useState(null);
+useEffect(() => {
+if (id) {
+fetchUser(id).then(setUser);
+}
+}, [id]);
+return (
+<MainLayout>
+{user ? <UserProfile user={user} /> : <p>Loading...</p>}
+</MainLayout>
+);
+}
+// Good: API route at /pages/api/users/[id].ts
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { getUser } from '../../../lib/db';
+export default async function handler(
+req: NextApiRequest,
+res: NextApiResponse
+) {
+const { id } = req.query;
+try {
+const user = await getUser(id as string);
+if (!user) {
+return res.status(404).json({ error: 'User not found' });
+}
+return res.status(200).json(user);
+} catch (error) {
+return res.status(500).json({ error: 'Failed to fetch user' });
+}
+}
+
+</example>
+
+<example type="invalid">
+// Bad: Inconsistent Next.js project structure
+/src
+/views // Should be /pages
+Home.tsx
+About.tsx
+Contact.tsx
+/routes // Should be /pages/api
+users.ts
+posts.ts
+/components
+Header.jsx
+Footer.jsx
+/assets // Should be /public
+logo.png
+favicon.ico
+// Bad: Page component not in pages directory
+// File: /src/views/UserPage.tsx
+import React from 'react';
+import Layout from '../components/Layout';
+function UserPage({ user }) {
+return (
+<Layout>
+<h1>{user.name}</h1>
+<p>{user.email}</p>
+</Layout>
+);
+}
+export default UserPage;
+// Bad: API route not in pages/api directory
+// File: /src/routes/users.ts
+import { Request, Response } from 'express';
+export default function usersHandler(req: Request, res: Response) {
+// API logic here
+res.status(200).json({ users: [] });
+}
+</example>
+

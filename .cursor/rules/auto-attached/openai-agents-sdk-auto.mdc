@@ -1,0 +1,87 @@
+---
+description: 
+globs: "**/agents/*.py", "**/tools/*.py", "**/core/*.py"
+alwaysApply: false
+---
+---
+description: 
+globs: "**/agents/*.py", "**/tools/*.py", "**/core/*.py"
+alwaysApply: false
+---
+
+ # OpenAI Agents SDK Implementation Standards
+
+## Context
+- This rule applies to all Python files implementing OpenAI Agents SDK functionality
+- Ensures consistent patterns for agent definitions, function tools, and handoffs
+- Helps maintain code quality and adherence to SDK best practices
+
+## Critical Rules
+- Use the `@function_tool` decorator for all agent tools with proper type hints
+- Include comprehensive docstrings for all tools explaining parameters and returns
+- Implement error handling within function tools to gracefully handle exceptions
+- Use Pydantic models for structured outputs where validation is needed
+- Create specialized agents with clear, focused instructions
+- Use descriptive names for agents that reflect their purpose
+- Include context in tool functions using RunContextWrapper when needed
+- Implement proper tracing with the `trace()` context manager
+- Handle async operations correctly with async/await patterns
+- Set up appropriate guardrails for user input validation
+
+## Examples
+
+<example>
+```python
+from pydantic import BaseModel
+from agents import Agent, function_tool, RunContextWrapper
+
+class ResponseData(BaseModel):
+    content: str
+    confidence: float
+    sources: list[str]
+
+@function_tool
+def fetch_data(query: str, max_results: int = 5) -> dict:
+    """Fetch data based on the provided query.
+    
+    Args:
+        query: Search query to find relevant information.
+        max_results: Maximum number of results to return.
+        
+    Returns:
+        A dictionary containing search results.
+    """
+    try:
+        # Implementation
+        results = {"results": ["data1", "data2"], "count": 2}
+        return results
+    except Exception as e:
+        raise ValueError(f"Error fetching data: {str(e)}")
+
+research_agent = Agent(
+    name="Research Assistant",
+    instructions="""You are a research assistant that helps find information.
+    Follow these steps:
+    1. Analyze the user's query
+    2. Search for relevant information
+    3. Compile the findings in a structured format""",
+    tools=[fetch_data],
+    output_type=ResponseData
+)
+```
+</example>
+
+<example type="invalid">
+```python
+# Missing proper docstring, type hints, and error handling
+def get_data(query):
+    results = search_database(query)
+    return results
+
+# Agent without clear instructions or properly defined tools
+agent = Agent(
+    name="Assistant",
+    instructions="Help users find information."
+)
+```
+</example>

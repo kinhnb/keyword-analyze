@@ -1,0 +1,110 @@
+---
+description: 
+globs: "**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"
+alwaysApply: false
+---
+---
+description: 
+globs: "**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"
+alwaysApply: false
+---
+
+# Enforce TailwindCSS Only
+
+## Context
+- This rule applies to JavaScript, TypeScript, and React component files
+- Ensures styling consistency across the codebase
+- Prevents mixing of different styling approaches
+
+## Critical Rules
+- Use only TailwindCSS utility classes for styling components
+- Do not use inline styles with the style attribute
+- Do not use CSS Modules or imported stylesheets
+- Always use className prop with Tailwind utility classes
+- Convert any existing styled-components to Tailwind equivalents
+- Group related Tailwind classes together for readability
+
+## Examples
+
+<example>
+```jsx
+// Good: Using TailwindCSS classes only
+function Button({ children, onClick }) {
+  return (
+    <button 
+      className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md shadow-sm transition-colors"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Good: Using conditional classes with Tailwind
+function Alert({ type, message }) {
+  const baseClasses = "px-4 py-3 rounded-md";
+  const typeClasses = {
+    success: "bg-green-100 text-green-800 border border-green-200",
+    error: "bg-red-100 text-red-800 border border-red-200",
+    warning: "bg-yellow-100 text-yellow-800 border border-yellow-200"
+  };
+  
+  return (
+    <div className={`${baseClasses} ${typeClasses[type] || typeClasses.info}`}>
+      {message}
+    </div>
+  );
+}
+```
+</example>
+
+<example type="invalid">
+```jsx
+// Bad: Using inline styles
+function Button({ children, onClick }) {
+  return (
+    <button 
+      style={{ 
+        padding: '0.5rem 1rem', 
+        backgroundColor: 'blue', 
+        color: 'white',
+        borderRadius: '4px'
+      }}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Bad: Importing CSS Module
+import styles from './Card.module.css';
+
+function Card({ title, content }) {
+  return (
+    <div className={styles.card}>
+      <h2 className={styles.title}>{title}</h2>
+      <p className={styles.content}>{content}</p>
+    </div>
+  );
+}
+
+// Bad: Mixing styled-components with React
+import styled from 'styled-components';
+
+const StyledButton = styled.button`
+  padding: 0.5rem 1rem;
+  background-color: blue;
+  color: white;
+  border-radius: 4px;
+`;
+
+function Button({ children, onClick }) {
+  return (
+    <StyledButton onClick={onClick}>
+      {children}
+    </StyledButton>
+  );
+}
+```
+</example>

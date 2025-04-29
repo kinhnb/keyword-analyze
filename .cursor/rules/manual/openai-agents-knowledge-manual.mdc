@@ -1,0 +1,124 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: 
+globs: 
+alwaysApply: false
+---
+waysApply: false
+---
+ # OpenAI Agents SDK Knowledge Source Integration
+
+## Context
+- This rule applies when integrating external knowledge sources with OpenAI Agents
+- Provides guidance for implementing FileSearchTool and WebSearchTool effectively
+- Ensures proper configuration and error handling for knowledge retrieval
+
+## Critical Rules
+- Configure search tools with appropriate vector store IDs when using FileSearchTool
+- Set reasonable max_num_results limits to prevent overwhelming the agent
+- Use proper error handling for search operations
+- Consider context length limitations when retrieving large amounts of text
+- Implement appropriate response processing for search results
+- Use metadata to filter search results when needed
+- Properly handle API rate limits for web searches
+- Consider implementing caching for frequently accessed knowledge
+- Document knowledge source limitations in agent instructions
+- Test knowledge retrieval with various query types for robustness
+
+## Examples
+
+<example>
+```python
+from agents import Agent, FileSearchTool, WebSearchTool
+from typing import List, Dict, Any
+
+# File search implementation
+research_agent = Agent(
+    name="Research Assistant",
+    instructions="""You help users find information from our knowledge base.
+    When searching documents:
+    1. Identify key search terms from the query
+    2. Retrieve relevant information using the search tool
+    3. Synthesize findings into a coherent response
+    4. Cite sources appropriately
+    
+    If you can't find information in our documents, indicate this clearly.""",
+    tools=[
+        FileSearchTool(
+            vector_store_ids=["company-documents-2023"],
+            max_num_results=5,
+            metadata_filters={"department": "research"}
+        )
+    ]
+)
+
+# Web search implementation
+web_researcher = Agent(
+    name="Web Information Specialist",
+    instructions="""You help users find up-to-date information from the web.
+    Follow these steps:
+    1. Identify key search terms
+    2. Perform web searches for current information
+    3. Evaluate source credibility
+    4. Synthesize information with proper attribution
+    
+    Always indicate when information might be outdated.""",
+    tools=[
+        WebSearchTool(
+            max_results=3,
+            timeout_seconds=10
+        )
+    ]
+)
+
+# Combined knowledge search function
+async def search_all_sources(query: str) -> Dict[str, List[Dict[str, Any]]]:
+    try:
+        # Implementation with error handling
+        results = {
+            "documents": await search_documents(query),
+            "web": await search_web(query)
+        }
+        
+        # Process and filter results
+        processed_results = process_results(results)
+        
+        return processed_results
+    except Exception as e:
+        logger.error(f"Search failed: {str(e)}")
+        return {
+            "documents": [],
+            "web": [],
+            "error": str(e)
+        }
+```
+</example>
+
+<example type="invalid">
+```python
+# Missing proper configuration
+agent = Agent(
+    name="Searcher",
+    instructions="Search for information.",
+    tools=[
+        # Missing vector_store_ids
+        FileSearchTool()
+    ]
+)
+
+# No error handling
+async def do_search(query):
+    # Missing try-except
+    results = await search_function(query)
+    return results
+
+# Excessive results could cause context overflow
+tool = WebSearchTool(
+    max_results=50  # Too many results
+)
+```
+</example>

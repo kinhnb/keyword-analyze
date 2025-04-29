@@ -1,0 +1,178 @@
+---
+description: 
+globs: "**/tests/*.py", "**/*_test.py", "**/test_*.py"
+alwaysApply: false
+---
+---
+description: 
+globs: "**/tests/*.py", "**/*_test.py", "**/test_*.py"
+alwaysApply: false
+---
+
+ # OpenAI Agents SDK Testing Patterns
+
+## Context
+- This rule applies to test files for OpenAI Agents SDK implementations
+- Ensures consistent patterns for testing agents, tools, and integrations
+- Critical for ensuring reliability and maintainability of agent systems
+
+## Critical Rules
+- Use pytest for agent and tool testing
+- Implement proper mocking for OpenAI API calls to avoid costs during testing
+- Test function tools in isolation before testing with agents
+- Create separate test fixtures for agents, tools, and configurations
+- Write tests for happy paths and error cases
+- Test edge cases like timeouts, rate limits, and invalid inputs
+- Mock external dependencies like databases and APIs
+- Use parametrized tests for different input variations
+- Create end-to-end tests for critical workflows
+- Implement appropriate assertion patterns for agent outputs
+
+## Examples
+
+<example>
+```python
+import pytest
+from unittest.mock import patch, MagicMock, AsyncMock
+from pydantic import BaseModel
+from agents import Agent, function_tool, Runner, RunConfig
+
+# Define test model
+class TestOutput(BaseModel):
+    result: str
+    score: float
+
+# Define test tool
+@function_tool
+def test_tool(input_data: str) -> dict:
+    """Test tool for unit testing.
+    
+    Args:
+        input_data: Input to process.
+        
+    Returns:
+        Processed result dictionary.
+    """
+    return {"result": f"Processed: {input_data}", "score": 0.95}
+
+# Mock agent instance for testing
+@pytest.fixture
+def mock_agent():
+    agent = Agent(
+        name="Test Agent",
+        instructions="This is a test agent for unit testing purposes.",
+        tools=[test_tool],
+        output_type=TestOutput
+    )
+    return agent
+
+# Mock the Runner to avoid API calls
+@pytest.fixture
+def mock_runner():
+    with patch("agents.Runner.run") as mock_run:
+        # Create a mock response
+        mock_result = MagicMock()
+        mock_result.final_output = "Mocked response"
+        mock_result.final_output_as.return_value = TestOutput(
+            result="Mocked response", 
+            score=0.95
+        )
+        
+        # Set up the mock to return our result
+        mock_run.return_value = mock_result
+        yield mock_run
+
+# Test the tool directly
+def test_test_tool():
+    result = test_tool("test input")
+    assert result["result"] == "Processed: test input"
+    assert result["score"] == 0.95
+
+# Test agent with mocked runner
+@pytest.mark.asyncio
+async def test_agent_with_mock(mock_agent, mock_runner):
+    # Run the agent
+    result = await Runner.run(
+        mock_agent, 
+        "Test query",
+        config=RunConfig(timeout_seconds=5)
+    )
+    
+    # Assertions
+    assert result.final_output == "Mocked response"
+    output = result.final_output_as(TestOutput)
+    assert output.result == "Mocked response"
+    assert output.score == 0.95
+    
+    # Verify the mock was called correctly
+    mock_runner.assert_called_once()
+    args, kwargs = mock_runner.call_args
+    assert args[0] == mock_agent
+    assert args[1] == "Test query"
+    assert kwargs["config"].timeout_seconds == 5
+
+# Test error handling
+@pytest.mark.asyncio
+async def test_agent_with_error():
+    with patch("agents.Runner.run") as mock_run:
+        # Set up mock to raise exception
+        mock_run.side_effect = Exception("Test error")
+        
+        # Test with exception handling
+        with pytest.raises(Exception) as excinfo:
+            await Runner.run(
+                mock_agent, 
+                "Test query"
+            )
+        
+        assert "Test error" in str(excinfo.value)
+
+# Parametrized test for multiple inputs
+@pytest.mark.parametrize(
+    "input_query,expected_result",
+    [
+        ("query 1", "response 1"),
+        ("query 2", "response 2"),
+        ("", "empty query response"),
+    ]
+)
+@pytest.mark.asyncio
+async def test_agent_with_multiple_inputs(input_query, expected_result):
+    with patch("agents.Runner.run") as mock_run:
+        # Create mock for each case
+        mock_result = MagicMock()
+        mock_result.final_output = expected_result
+        mock_run.return_value = mock_result
+        
+        # Run test
+        result = await Runner.run(mock_agent, input_query)
+        assert result.final_output == expected_result
+```
+</example>
+
+<example type="invalid">
+```python
+# Missing proper mocking - will make actual API calls
+def test_real_agent():
+    agent = Agent(
+        name="Live Agent",
+        instructions="This will make real API calls!"
+    )
+    # Directly calls the API - expensive and slow
+    result = Runner.run_sync(agent, "Test query")
+    assert result is not None
+
+# No isolation of dependencies
+def test_tool_with_dependencies():
+    # Directly uses external database
+    result = database_query_tool("SELECT * FROM users")
+    assert len(result) > 0
+
+# No error testing
+def test_only_happy_path():
+    agent = setup_agent()
+    result = Runner.run_sync(agent, "Good input")
+    assert result is not None
+    # Missing tests for edge cases and errors
+```
+</example>

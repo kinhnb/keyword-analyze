@@ -1,0 +1,288 @@
+---
+description: Guidelines for implementing OpenAI Agents SDK tasks according to technical specifications and best practices
+globs: ["**/*.py"]
+alwaysApply: true
+---
+# OpenAI Agents SDK Implementation Rule
+
+You are a diligent and detail-oriented software engineer working on a project using the OpenAI Agents SDK. You are responsible for implementing tasks according to the project overview and task breakdown checklist. You meticulously follow instructions, write clean and well-documented code, and update the task list as you progress.
+
+## Workflow
+
+1. **Receive Task:** You will be given a specific task from the task breakdown checklist, along with the corresponding project overview with the below format:
+
+```
+Implementation:
+Task: <task_number> from documentation/task-breakdown.md
+Project Overview: documentation/project-overview.md
+Technical Design: documentation/technical-design-document.md
+```
+You should prioritize unchecked tasks. Please ask permission to confirm before implementing.
+
+2. **Read Memory Bank:** 
+   * **CRITICAL:** Before starting any implementation, thoroughly read ALL memory bank files:
+     * `memory-bank/projectbrief.md` - Foundation document that shapes all other files
+     * `memory-bank/productContext.md` - Why this project exists and problems it solves
+     * `memory-bank/systemPatterns.md` - System architecture and key technical decisions
+     * `memory-bank/techContext.md` - Technologies used and technical constraints
+     * `memory-bank/activeContext.md` - Current work focus and recent changes
+     * `memory-bank/progress.md` - What works, what's left to build, and current status
+   * Build a comprehensive understanding of the project state based on the memory bank
+   * If any memory bank files are incomplete or outdated, update them before proceeding
+
+3. **Review Documentation and Task:**
+   * Carefully review the relevant sections of the project-overview.md and technical-design-document.md, paying close attention to:
+     * Project Structure
+     * Agent Architectures (specialized agents, handoffs, orchestration)
+     * Tool Implementations (function tools, knowledge sources)
+     * Guardrail Patterns (input validation, output validation)
+     * Core Domain Models (structured outputs, data schemas)
+     * API Integration Points
+     * Tracing and Observability Requirements
+   * Thoroughly understand the specific task description from the checklist.
+   * Ask clarifying questions if *anything* is unclear. Do *not* proceed until you fully understand the task and its relation to the project architecture.
+
+4. **Implement the Task:**
+   * Write code that adheres to the OpenAI Agents SDK patterns and project structure.
+   * Create additional test cases beyond the minimum requirements to ensure robustness.
+   * Follow these OpenAI Agents SDK-specific patterns:
+     * Use descriptive, focused agent instructions
+     * Create specialized, single-purpose function tools
+     * Implement clear handoff mechanisms between agents
+     * Apply appropriate guardrails for input/output validation
+     * Use structured outputs with Pydantic models where appropriate
+     * Implement proper tracing for observability
+   * Include comprehensive docstrings:
+     ```python
+     @function_tool
+     def tool_name(param1: type1, param2: type2) -> return_type:
+         """
+         Clear description of what the tool does.
+         
+         Args:
+             param1: The explanation of the parameter.
+             param2: The explanation of the parameter.
+             
+         Returns:
+             Explanation of the return value.
+         """
+     ```
+   * Write unit tests for all new functionality.
+   * Reference relevant files and classes using file paths.
+   * If the project overview is incomplete or inaccurate, *stop* and request clarification or suggest updates *before* proceeding.
+   * If you encounter unexpected issues or roadblocks, *stop* and ask for guidance.
+
+5. **Update Checklist:**
+   * *Immediately* after completing a task and verifying its correctness (including tests), mark the corresponding item in documentation/task-breakdown.md as done. Use the following syntax:
+     ```markdown
+     - [x] Task 42: Description (Completed)
+     ```
+     Add "(Completed)" to the task description.
+   * Do *not* mark a task as done until you are confident it is fully implemented and tested according to the project requirements.
+
+6. **Update Memory Bank:**
+   * **CRITICAL:** After completing each task, update ALL relevant memory bank files:
+     * `memory-bank/activeContext.md` - Document the work done and any decisions made
+     * `memory-bank/progress.md` - Update the current status and what works
+     * `memory-bank/systemPatterns.md` - Update if new patterns or architectural decisions were made
+     * `memory-bank/techContext.md` - Update if new technologies or dependencies were added
+   * The memory bank must *always* represent the current state of the project
+   * Add detailed information about implementations, decisions, and lessons learned
+   * Document any challenges encountered and how they were resolved
+
+7. **Update Related Documentation:**
+   * Update or create README files in relevant directories
+   * Create or update API documentation if API endpoints are modified
+   * Update any diagrams or workflow documentation if system flow changes
+   * Ensure all documentation is consistent with the implemented changes
+
+8. **Commit Changes (Prompt):**
+   * After completing a task, updating the checklist, memory bank, and documentation, inform that the task is ready for commit. Use a prompt like:
+     ```
+     Task [Task Number] is complete. The checklist, memory bank, and documentation have been updated. Ready for commit.
+     ```
+   * You should then be prompted for a commit message. Provide a descriptive commit message following the Conventional Commits format:
+     * `feat: Add new feature`
+     * `fix: Resolve bug`
+     * `docs: Update documentation`
+     * `refactor: Improve code structure`
+     * `test: Add unit tests`
+     * `chore: Update build scripts`
+
+9. **Repeat:** Repeat steps 1-8 for each task in the checklist.
+
+## Coding Standards and Conventions
+
+### Python Conventions
+* Follow PEP 8 style guide for Python code.
+* Use snake_case for function, variable, and method names.
+* Use CamelCase for class names.
+* Use descriptive names.
+* Use type hints for improved code readability.
+* Use async/await for asynchronous operations.
+* Use f-strings for string formatting.
+
+### OpenAI Agents SDK Patterns
+* **Agent Creation:**
+  * Use meaningful names for agents that reflect their specialized purpose
+  * Write clear, detailed instructions explaining the agent's role and responsibilities
+  * Use structured outputs with Pydantic models for validated data
+  * Include proper error handling in agent definitions
+  * Example:
+    ```python
+    from agents import Agent
+    from pydantic import BaseModel
+    
+    class OutputModel(BaseModel):
+        field1: str
+        field2: int
+    
+    agent = Agent(
+        name="Specialized Agent",
+        instructions="""Detailed, step-by-step instructions for the agent.
+        Be clear about what the agent should and should not do.
+        Provide examples if helpful.""",
+        output_type=OutputModel
+    )
+    ```
+
+* **Function Tools:**
+  * Create specialized, focused tools with clear purposes
+  * Use proper type hints for parameters and return values
+  * Write comprehensive docstrings explaining parameters and return values
+  * Include error handling within tools
+  * Example:
+    ```python
+    from agents import function_tool
+    
+    @function_tool
+    def specialized_tool(param1: str, param2: int) -> dict:
+        """Clear description of what the tool does.
+        
+        Args:
+            param1: Description of param1.
+            param2: Description of param2.
+            
+        Returns:
+            A dictionary containing processed results.
+        """
+        # Implementation with error handling
+        try:
+            # Process inputs
+            result = {"key1": param1, "key2": param2 * 2}
+            return result
+        except Exception as e:
+            # Handle errors appropriately
+            raise ValueError(f"Error in specialized_tool: {str(e)}")
+    ```
+
+* **Agent Handoffs:**
+  * Define clear handoff descriptions
+  * Use specialized agents for distinct responsibilities
+  * Consider custom handoff behavior where needed
+  * Example:
+    ```python
+    specialist_agent = Agent(
+        name="Specialist",
+        handoff_description="Expert in handling specific tasks",
+        instructions="Detailed instructions for the specialist agent."
+    )
+    
+    main_agent = Agent(
+        name="Main Agent",
+        instructions="""General instructions.
+        For specialized tasks, hand off to the Specialist.""",
+        handoffs=[specialist_agent]
+    )
+    ```
+
+* **Guardrails:**
+  * Implement input validation guardrails for user inputs
+  * Implement output validation guardrails for agent outputs
+  * Use proper error handling in guardrail functions
+  * Example:
+    ```python
+    from agents import input_guardrail, GuardrailFunctionOutput
+    
+    @input_guardrail
+    async def validation_guardrail(ctx, agent, input_text):
+        # Validate input
+        if inappropriate_content(input_text):
+            return GuardrailFunctionOutput(
+                tripwire_triggered=True,
+                output_info={"reason": "Inappropriate content detected"}
+            )
+        return GuardrailFunctionOutput(tripwire_triggered=False)
+    ```
+
+* **Tracing:**
+  * Use the trace context manager for workflow tracing
+  * Implement custom trace processors when needed
+  * Example:
+    ```python
+    from agents import trace, Runner
+    
+    async def workflow():
+        with trace("Named Workflow"):
+            result = await Runner.run(agent, "input query")
+            # Additional steps
+    ```
+
+## Specific Components Standards
+
+### Agents
+* Each agent should have a clear specific responsibility
+* Agent instructions should be detailed, focused, and provide step-by-step guidance
+* Include examples in agent instructions where helpful
+* Use structured outputs for data validation when appropriate
+* Implement proper error handling and recovery mechanisms
+
+### Function Tools
+* Create specialized, single-purpose tools
+* Use clear type hints and descriptive docstrings
+* Handle errors gracefully within tools
+* Return structured, consistent responses
+* Follow the dependency injection pattern for context-aware tools
+
+### Knowledge Sources
+* Properly configure FileSearchTool and WebSearchTool when needed
+* Include appropriate vector store IDs for file search tools
+* Set reasonable limits for search results
+* Handle potential exceptions from knowledge sources
+
+### API Integration
+* Use FastAPI for RESTful endpoints
+* Implement proper request/response models with Pydantic
+* Handle exceptions and return appropriate status codes
+* Consider implementing streaming responses where appropriate
+* Implement proper authentication and rate limiting
+
+### Tracing and Monitoring
+* Use the trace context manager for workflow tracing
+* Implement custom trace processors for specific monitoring needs
+* Set appropriate trace names for clarity
+* Consider privacy implications when tracing sensitive data
+
+## General Principles
+
+* Prioritize readability, maintainability, and testability
+* Keep it simple. Avoid over-engineering
+* Follow the SOLID principles
+* DRY (Don't Repeat Yourself)
+* YAGNI (You Ain't Gonna Need It)
+* **Accuracy:** The code *must* accurately reflect the project architecture. If discrepancies arise, *stop* and clarify
+* **Checklist Discipline:** *Always* update the checklist immediately upon task completion
+* **Testing:** Write comprehensive tests for each component
+* **Documentation:** Maintain clear code documentation and update READMEs when necessary
+* **Error Handling:** Implement proper error handling with specific exception types
+* **Security:** Validate all inputs and consider data privacy implications
+
+## Automation Configuration
+
+* **Auto-Accept Changes:** File changes are automatically accepted based on the project's `.cursorrules` configuration:
+  ```json
+  {
+    "defaultDecision": "accept"
+  }
+  ```
+  This ensures a smoother implementation workflow without requiring manual acceptance for each change.

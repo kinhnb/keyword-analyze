@@ -1,0 +1,217 @@
+---
+description: 
+globs: **/lifecycle/*.py, **/flow/*.py, **/agents/*.py
+alwaysApply: false
+---
+---
+description: 
+globs: **/lifecycle/*.py, **/flow/*.py, **/agents/*.py
+alwaysApply: false
+---
+
+ # OpenAI Agents SDK Lifecycle and Flow Control
+
+## Context
+- This rule applies to code implementing agent lifecycle management and flow control
+- Ensures proper handling of the complete agent execution flow
+- Critical for reliable agent behavior, from initialization to response handling
+
+## Critical Rules
+- Implement proper agent initialization with required configurations
+- Design clear, linear flow patterns for agent execution
+- Use lifecycle hooks for pre/post processing when needed
+- Implement comprehensive error handling at each flow stage
+- Properly clean up resources after agent execution
+- Use appropriate timeout and retry mechanisms
+- Implement progressive response handling for streaming
+- Consider state management for multi-turn conversations
+- Log key flow events for debugging and monitoring
+- Use appropriate asynchronous patterns for non-blocking execution
+
+## Examples
+
+<example>
+```python
+import asyncio
+import logging
+from typing import Dict, Any, Optional, List
+from agents import Agent, Runner, RunConfig, trace, LifecycleEvent, RunContextWrapper
+
+# Set up logging
+logger = logging.getLogger("agent_lifecycle")
+
+# Custom lifecycle event handlers
+async def on_start(ctx: RunContextWrapper[Dict[str, Any]], event_data: Dict[str, Any]):
+    """Handler called when agent execution starts."""
+    ctx.context["start_time"] = time.time()
+    ctx.context["session_id"] = ctx.context.get("session_id") or generate_session_id()
+    logger.info(f"Agent execution started: session={ctx.context['session_id']}")
+
+async def on_tool_call(ctx: RunContextWrapper[Dict[str, Any]], event_data: Dict[str, Any]):
+    """Handler called when agent calls a tool."""
+    tool_name = event_data.get("name", "unknown")
+    logger.info(f"Tool call: session={ctx.context['session_id']}, tool={tool_name}")
+    # Could implement additional monitoring, rate limiting, etc.
+
+async def on_completion(ctx: RunContextWrapper[Dict[str, Any]], event_data: Dict[str, Any]):
+    """Handler called when agent execution completes."""
+    execution_time = time.time() - ctx.context.get("start_time", time.time())
+    logger.info(
+        f"Agent execution completed: session={ctx.context['session_id']}, "
+        f"duration={execution_time:.2f}s"
+    )
+    # Could implement caching, analytics, etc.
+
+# Create agent with lifecycle handlers
+def create_lifecycle_aware_agent():
+    agent = Agent(
+        name="Lifecycle Agent",
+        instructions="""You are a helpful assistant with proper lifecycle management.""",
+        lifecycle_handlers={
+            LifecycleEvent.ON_START: on_start,
+            LifecycleEvent.ON_TOOL_CALL: on_tool_call,
+            LifecycleEvent.ON_COMPLETION: on_completion
+        }
+    )
+    return agent
+
+# Progressive response handler for streaming
+async def handle_streamed_response(agent, query, context=None):
+    """Handle streaming responses from an agent."""
+    try:
+        # Initialize context if needed
+        context = context or {}
+        
+        # Set up response container
+        full_response = []
+        
+        # Stream the response
+        async for chunk in Runner.stream(
+            agent,
+            query,
+            context=context,
+            config=RunConfig(
+                timeout_seconds=30,
+                max_turns=10
+            )
+        ):
+            # Process each chunk
+            if chunk.content:
+                full_response.append(chunk.content)
+                # In a real application, you might yield this to a websocket
+                yield chunk.content
+        
+        # Process the completed response
+        complete_response = "".join(full_response)
+        logger.info(f"Completed streaming response: length={len(complete_response)}")
+        
+    except asyncio.TimeoutError:
+        logger.error("Streaming response timed out")
+        yield "\n[Response timed out]"
+    except Exception as e:
+        logger.error(f"Error in streaming response: {str(e)}")
+        yield f"\n[Error: {str(e)}]"
+
+# Complete flow with proper lifecycle management
+async def execute_agent_flow(query: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Execute a complete agent flow with proper lifecycle management."""
+    # Initialize context
+    context = context or {}
+    context["flow_id"] = generate_flow_id()
+    
+    # Create trace for the entire flow
+    with trace(f"Agent Execution Flow {context['flow_id']}"):
+        try:
+            # Pre-processing
+            processed_query = preprocess_query(query)
+            
+            # Create the agent
+            agent = create_lifecycle_aware_agent()
+            
+            # Run configuration
+            config = RunConfig(
+                timeout_seconds=30,
+                max_turns=10,
+                retry_strategy={
+                    "max_retries": 3,
+                    "backoff_factor": 1.5
+                }
+            )
+            
+            # Execute the agent
+            start_time = time.time()
+            result = await Runner.run(
+                agent,
+                processed_query,
+                context=context,
+                config=config
+            )
+            
+            # Post-processing
+            processed_output = postprocess_output(result.final_output)
+            
+            # Prepare result
+            return {
+                "status": "success",
+                "output": processed_output,
+                "execution_time": time.time() - start_time,
+                "token_usage": result.token_usage,
+                "flow_id": context["flow_id"]
+            }
+            
+        except asyncio.TimeoutError:
+            logger.error(f"Agent execution timed out: flow_id={context['flow_id']}")
+            return {
+                "status": "timeout",
+                "error": "Execution timed out",
+                "flow_id": context["flow_id"]
+            }
+            
+        except Exception as e:
+            logger.error(f"Agent execution failed: flow_id={context['flow_id']}, error={str(e)}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "flow_id": context["flow_id"]
+            }
+        
+        finally:
+            # Cleanup
+            cleanup_resources(context)
+```
+</example>
+
+<example type="invalid">
+```python
+# Missing proper lifecycle management
+def run_agent(query):
+    # No error handling
+    # No timeout configuration
+    # No context initialization
+    agent = Agent(name="Simple Agent", instructions="Help the user.")
+    result = Runner.run_sync(agent, query)
+    return result.final_output
+
+# Inadequate streaming implementation
+async def stream_response(agent, query):
+    # No error handling
+    # No timeout handling
+    async for chunk in Runner.stream(agent, query):
+        print(chunk.content)  # Direct printing instead of yielding
+
+# Missing lifecycle hooks
+agent = Agent(
+    name="Limited Agent",
+    instructions="Provide helpful responses."
+    # No lifecycle handlers
+    # No tracing
+)
+
+# Blocking execution
+def process_query(query):
+    # Blocking call in what should be async code
+    # No timeout handling
+    result = agent.run_sync(query)
+    return result
+```
+</example>

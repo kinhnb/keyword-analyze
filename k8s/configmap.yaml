@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: serp-keyword-config
+data:
+  log-level: "INFO"
+  enable-metrics: "true"
+  enable-tracing: "true"
+  max-cache-size: "1000"
+  cache-ttl-seconds: "86400"
+  api-rate-limit: "100"
+  api-rate-limit-period: "60"
+  serp-api-provider: "serpapi"
+  default-result-count: "10"
+  max-result-count: "50"
+  prometheus-port: "9090" 
