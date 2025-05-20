@@ -4,13 +4,10 @@ Analyze endpoints for the AI SERP Keyword Research Agent API.
 This module provides endpoints for analyzing search terms and generating SEO recommendations.
 """
 
-import asyncio
 import uuid
 from datetime import datetime
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, BackgroundTasks, Request
 
 from ai_serp_keyword_research.api.schemas.request import AnalyzeRequest
 from ai_serp_keyword_research.api.schemas.response import AnalyzeResponse, ErrorResponse
@@ -20,7 +17,8 @@ from ai_serp_keyword_research.data.repositories import SearchAnalysisRepository
 from ai_serp_keyword_research.services.cache import CacheService
 from ai_serp_keyword_research.orchestration.multi_agent_orchestrator import SerpKeywordAnalysisOrchestrator
 from ai_serp_keyword_research.tracing import trace
-from ai_serp_keyword_research.utils.logging import app_logger, CorrelationIDFilter, LogContext
+from ai_serp_keyword_research.utils.logging import app_logger, CorrelationIDFilter
+from ai_serp_keyword_research.api.dependencies import get_agent_orchestrator
 
 # Create router
 router = APIRouter(tags=["Analysis"])
@@ -39,7 +37,7 @@ async def analyze_keyword(
     cache_service: CacheService = Depends(),
     analysis_repository: SearchAnalysisRepository = Depends(),
     pipeline: SerpAnalysisPipeline = Depends(),
-    orchestrator: SerpKeywordAnalysisOrchestrator = Depends(),
+    orchestrator: SerpKeywordAnalysisOrchestrator = Depends(get_agent_orchestrator),
 ) -> AnalyzeResponse:
     """
     Analyze a search term to extract SEO insights and generate recommendations.

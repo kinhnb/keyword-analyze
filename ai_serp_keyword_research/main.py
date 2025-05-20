@@ -43,6 +43,7 @@ from ai_serp_keyword_research.data.repositories.base import create_db_session
 from ai_serp_keyword_research.tracing import configure_tracing, trace
 from ai_serp_keyword_research.metrics import configure_metrics
 from ai_serp_keyword_research.metrics.performance import get_performance_monitor
+from ai_serp_keyword_research.orchestration.multi_agent_orchestrator import SerpKeywordAnalysisOrchestrator
 from ai_serp_keyword_research.utils.logging import app_logger
 from ai_serp_keyword_research.utils.env_validator import validate_environment, EnvironmentValidationError
 from ai_serp_keyword_research.security import get_credential_manager
@@ -156,6 +157,9 @@ async def startup_event():
     # Set up database session
     db_url = credential_manager.get_connection_string("DATABASE") or os.getenv("DATABASE_URL", "sqlite:///./test.db")
     app.state.db_session = await create_db_session(db_url)
+
+    # Initialize the multi-agent orchestrator
+    app.state.orchestrator = SerpKeywordAnalysisOrchestrator()
     
     # Set up tracing
     configure_tracing_enabled = os.getenv("ENABLE_TRACING", "false").lower() == "true"
@@ -253,4 +257,8 @@ def get_db_session():
 
 def get_credentials():
     """Get the credential manager for dependency injection."""
-    return app.state.credential_manager 
+    return app.state.credential_manager
+
+def get_agent_orchestrator() -> SerpKeywordAnalysisOrchestrator:
+    """Get the multi-agent orchestrator instance."""
+    return app.state.orchestrator
